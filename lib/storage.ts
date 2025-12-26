@@ -12,8 +12,11 @@ type Meta = {
   createdAt: string
 }
 
-function safeName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_.\-]/g, '_').slice(0, 200)
+function normalizeOriginalName(name: string): string {
+  const trimmed = (name || '').trim().slice(0, 200)
+  if (!trimmed) return 'cipher.bin'
+  // Block path separators and control chars to keep metadata safe while preserving locale-specific characters.
+  return trimmed.replace(/[\0\r\n]/g, '').replace(/[\\/]/g, '_') || 'cipher.bin'
 }
 
 async function ensureDir(p: string) {
@@ -38,7 +41,7 @@ export async function saveCipher(owner: string, originalName: string, data: Buff
   const meta: Meta = {
     id,
     owner,
-    originalName: safeName(originalName || 'cipher.bin'),
+    originalName: normalizeOriginalName(originalName || 'cipher.bin'),
     size: data.length,
     createdAt: new Date().toISOString(),
   }

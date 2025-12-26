@@ -99,7 +99,7 @@ done
 	- 元数据：同名 `*.json`，包含 `id/owner/originalName/size/createdAt`
 - 读写工具：
 	- [lib/storage.ts](lib/storage.ts)
-		- `saveCipher(owner, originalName, data)`：落盘密文并生成元数据
+			- `saveCipher(owner, originalName, data)`：落盘密文并生成元数据（保留原始文件名的多语言字符，仅过滤控制符与路径分隔符）
 		- `listCiphers(owner)`：按创建时间倒序列出
 		- `readCipher(owner, id)`：带前缀校验读取
 		- `removeCipher(owner, id)`：删除文件与元数据
@@ -150,7 +150,34 @@ Authorization: Bearer <token>
 
 响应：`application/octet-stream`（与上传格式一致）
 
-源码：[pages/api/download.ts](pages/api/download.ts)
+源码：[pages/api/download.ts](pages/api/download.ts)（返回 `Content-Disposition` 头同时包含 ASCII 回退和 UTF-8 扩展，保证多语言文件名下载时保持原样）
+
+6) 共享密文：`POST /api/share`
+
+请求体：`{ fileId, targetUsername, encryptedKey, iv, cipher, size? }`
+
+- 接口 body 允许最大 30 MB JSON 负载（覆盖 20 MB 明文在 Base64 膨胀后的体积），以支持 PDF 等较大的共享文件；
+- `encryptedKey/iv/cipher` 均为 Base64 字符串，分别对应 RSA-OAEP 加密的对称密钥、AES-GCM 的 IV 以及对明文重新加密的密文；
+- `size` 可选，用于前端展示共享文件原始字节数。
+
+响应：`201` + 共享元数据。
+
+源码：[pages/api/share/index.ts](pages/api/share/index.ts)
+
+### 共享密文的端到端流程
+
+以用户 A 向用户 B 分享文件为例：
+- **步骤 1：A 获取 B 的公钥**。调用 `/api/public-key?username=B` 返回 B 的 RSA-OAEP 公钥（JWK）。
+- **步骤 2：A 解密自己的原始文件**。先从 `/api/download` 拉取原始密文，再用 A 的口令（通过 PBKDF2）解出明文。此过程始终在浏览器本地完成，服务端不接触明文。
+- **步骤 3：A 用重新生成的 AES 密钥加密明文**。生成一次性的 256bit AES-GCM 密钥及随机 `iv`，对明文执行 AES-GCM 加密，得到 `cipher`。
+- **步骤 4：A 用 B 的公钥封装 AES 密钥**。把步骤 3 的对称密钥用 RSA-OAEP（B 的公钥）加密，得到 `encryptedKey`，确保只有 B 能解密该密钥。
+- **步骤 5：A 上传共享载荷**。把 `fileId`、目标用户名、三段 Base64 数据（`encryptedKey`/`iv`/`cipher`）与可选 `size` 发送到 `/api/share`。服务器仅保存这些密文片段以及必要的元数据。
+- **步骤 6：B 下载共享内容**。B 登录后从 `/api/share?direction=incoming` 获取到元数据，再调用 `/api/share/download?id=<shareId>` 拿到共享密文。页面会：
+	- 用 B 的 RSA 私钥（仅存于 B 的浏览器并由口令解封）解密 `encryptedKey`，复原 AES 密钥；
+	- 使用恢复的 AES 密钥与 `iv` 对 `cipher` 进行 AES-GCM 解密，得到原始文件明文；
+	- 生成 Blob 并触发下载。全流程中服务端从未持有解密所需的密钥材料。
+
+关键代码：浏览器端流程位于 [pages/index.tsx](pages/index.tsx) 的 `onShare()` 与 `onDownloadShare()`；服务端共享落盘逻辑在 [lib/shares.ts](lib/shares.ts)。
 
 ## 前端页面
 

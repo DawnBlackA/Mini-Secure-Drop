@@ -17,5 +17,5 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const r = verifyUser(username, password)
   if ('error' in r) return res.status(401).json({ error: r.error })
   const token = signJwt({ sub: r.id, username })
-  return res.status(200).json({ token, userId: r.id, username })
+  return res.status(200).json({ token, userId: r.id, username, publicKey: r.publicKey || null })
 }

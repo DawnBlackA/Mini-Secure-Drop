@@ -9,6 +9,17 @@ export const config = {
   },
 }
 
+function resolveOriginalName(header: string | string[] | undefined): string {
+  if (!header) return 'cipher.bin'
+  const value = Array.isArray(header) ? header[0] : header
+  if (!value) return 'cipher.bin'
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!rateLimit(req, res)) return
   if (req.method !== 'POST') {
@@ -32,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const MAX = 20 * 1024 * 1024
   if (buf.length > MAX) return res.status(413).json({ error: 'Payload too large' })
 
-  const originalName = (req.headers['x-file-name'] as string) || 'cipher.bin'
+  const originalName = resolveOriginalName(req.headers['x-file-name'])
   try {
     const meta = await saveCipher(payload.sub, originalName, buf)
     return res.status(200).json({ id: meta.id, originalName: meta.originalName, size: meta.size, createdAt: meta.createdAt })

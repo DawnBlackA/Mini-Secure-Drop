@@ -10,12 +10,12 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'Method not allowed' })
   }
-  const { username, password } = req.body || {}
-  if (typeof username !== 'string' || typeof password !== 'string') {
+  const { username, password, publicKey } = req.body || {}
+  if (typeof username !== 'string' || typeof password !== 'string' || typeof publicKey !== 'string') {
     return res.status(400).json({ error: 'Invalid payload' })
   }
-  const r = registerUser(username, password)
+  const r = registerUser(username, password, publicKey)
   if ('error' in r) return res.status(400).json({ error: r.error })
   const token = signJwt({ sub: r.id, username })
-  return res.status(200).json({ token, userId: r.id, username })
+  return res.status(200).json({ token, userId: r.id, username, publicKey })
 }

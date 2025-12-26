@@ -3,6 +3,20 @@ import { basicInputFilter, rateLimit } from '@/lib/security'
 import { getAuthToken, verifyJwt } from '@/lib/jwt'
 import { readCipher } from '@/lib/storage'
 
+function encodeContentDisposition(name: string): string {
+  const fallback = Array.from(name || '')
+    .map((ch) => {
+      const code = ch.charCodeAt(0)
+      if (code < 0x20 || code > 0x7E || ch === '"' || ch === '\\') return '_'
+      return ch
+    })
+    .join('')
+    .replace(/_+/g, '_')
+    .trim() || 'file.bin'
+  const encoded = encodeURIComponent(name).replace(/['()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!rateLimit(req, res)) return
   if (!basicInputFilter(req, res)) return
@@ -23,6 +37,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!found) return res.status(404).json({ error: 'Not found' })
 
   res.setHeader('Content-Type', 'application/octet-stream')
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(found.meta.originalName)}"`)
+  res.setHeader('Content-Disposition', encodeContentDisposition(found.meta.originalName))
   res.status(200).send(found.data)
 }
